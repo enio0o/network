@@ -3,3 +3,101 @@ fdsfs
 fdsf
 fdsf
 dsffsd
+# Настраиваем vESR23Дефолтные креды: **admin/password**45Сразу после логина надо поменять67```8password P@ssw0rd9commit10confirm11save12```1314## Базовая настройка1516Одинаковая на RTR1 и RTR21718Ставим хостнеймы и внешние адреса в сторону испа1920```21hostname RTR122domain name company.prof23int g 1/0/024ip address 10.10.10.2/3025ip firewall disable26exit27ip route 0.0.0.0/0 10.10.10.128end29commit30confirm31save32```3334Подинтерфейсы настраиваем следующим образом3536```37configure38int g 1/0/1.10039ip firewall disable40ip address 10.0.10.1/2741exit42int g 1/0/1.20043ip firewall disable44ip address 10.0.10.33/2745exit46int g 1/0/1.30047ip firewall disable48ip address 10.0.10.65/2749end50commit51confirm52save53```5455На RTR2 настраивается аналогично, меняются подсети565758## DHCP5960```61ip dhcp-server62ip dhcp-server pool vlan10063network 10.0.10.0/2764address-range 10.0.10.10-10.0.10.2065default-router 10.0.10.166domain-name company.prof67end68commit69confirm70save71```7273Для остальных vlan и RTR2 настройка аналогичная7475## Логи7677```78configure79syslog host SRV180remote-address 10.0.10.1081transport udp82severity debug83port 51484end85commit86confirm87save88```8990## NAT9192```93configure94object-group LOCAL95ip prefix 10.0.10.0/2796exit97object-group network WAN98ip address-range 10.10.10.299exit100nat source101pool WAN102ip address-range 10.10.10.2103ruleset MASQUERADE104to interface g 1/0/1105rule 1106match source-address LOCAL107action source-nat pool WAN108enable109end110commit111confirm112save113```
+# Настраиваем vESR
+Дефолтные креды: **admin/password**
+Сразу после логина надо поменять
+```
+password P@ssw0rd
+commit
+confirm
+save
+```
+## Базовая настройка
+Одинаковая на RTR1 и RTR2
+Ставим хостнеймы и внешние адреса в сторону испа
+```
+hostname RTR1
+domain name company.prof
+int g 1/0/0
+ip address 10.10.10.2/30
+ip firewall disable
+exit
+ip route 0.0.0.0/0 10.10.10.1
+end
+commit
+confirm
+save
+```
+Подинтерфейсы настраиваем следующим образом
+```
+configure
+int g 1/0/1.100
+ip firewall disable
+ip address 10.0.10.1/27
+exit
+int g 1/0/1.200
+ip firewall disable
+ip address 10.0.10.33/27
+exit
+int g 1/0/1.300
+ip firewall disable
+ip address 10.0.10.65/27
+end
+commit
+confirm
+save
+```
+На RTR2 настраивается аналогично, меняются подсети
+## DHCP
+```
+ip dhcp-server
+ip dhcp-server pool vlan100
+network 10.0.10.0/27
+address-range 10.0.10.10-10.0.10.20
+default-router 10.0.10.1
+domain-name company.prof
+end
+commit
+confirm
+save
+```
+Для остальных vlan и RTR2 настройка аналогичная
+## Логи
+```
+configure
+syslog host SRV1
+remote-address 10.0.10.10
+transport udp
+severity debug
+port 514
+end
+commit
+confirm
+save
+```
+## NAT
+```
+configure
+object-group LOCAL
+ip prefix 10.0.10.0/27
+exit
+object-group network WAN
+ip address-range 10.10.10.2
+exit
+nat source
+pool WAN
+ip address-range 10.10.10.2
+ruleset MASQUERADE
+to interface g 1/0/1
+rule 1
+match source-address LOCAL
+action source-nat pool WAN
+enable
+end
+commit
+confirm
+save
+```
+
+

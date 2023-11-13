@@ -1,0 +1,307 @@
+Установка PostgreSQL
+Откройте терминал и выполните следующие команды для установки PostgreSQL:
+
+bash
+Copy code
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+2. Создание Баз Данных
+Переключитесь на пользователя postgres и создайте базы данных prod, test и dev:
+
+bash
+Copy code
+sudo -i -u postgres
+createdb prod
+createdb test
+createdb dev
+3. Заполнение Баз Данных Тестовыми Данными
+Используйте утилиту pgbench для заполнения баз данных тестовыми данными. Коэффициент масштабирования оставьте по умолчанию:
+
+bash
+Copy code
+pgbench -i prod
+pgbench -i test
+pgbench -i dev
+4. Создание Пользователей и Назначение Прав
+Создайте пользователей produser, testuser, devuser и назначьте им права доступа к соответствующим базам данных:
+
+bash
+Copy code
+createuser produser
+createuser testuser
+createuser devuser
+
+psql -c "GRANT ALL PRIVILEGES ON DATABASE prod TO produser;"
+psql -c "GRANT ALL PRIVILEGES ON DATABASE test TO testuser;"
+psql -c "GRANT ALL PRIVILEGES ON DATABASE dev TO devuser;"
+5. Создание Пользователя dbadmin
+Создайте пользователя dbadmin с привилегиями суперпользователя:
+
+bash
+Copy code
+createuser dbadmin -s
+6. Разрешение Внешних Подключений
+Для разрешения внешних подключений к PostgreSQL, отредактируйте файл конфигурации postgresql.conf:
+
+bash
+Copy code
+nano /etc/postgresql/12/main/postgresql.conf
+Установите значение listen_addresses на '*' или на конкретный IP-адрес вашего сервера:
+
+arduino
+Copy code
+listen_addresses = '*'
+Затем отредактируйте файл pg_hba.conf для настройки правил аутентификации:
+
+bash
+Copy code
+nano /etc/postgresql/12/main/pg_hba.conf
+Добавьте следующие строки в конец файла для разрешения подключений от всех пользователей:
+
+sql
+Copy code
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+host    all             all             0.0.0.0/0               md5
+host    all             all             ::/0                    md5
+7. Перезапуск Сервиса PostgreSQL
+Перезапустите сервис PostgreSQL для применения изменений:
+
+bash
+Copy code
+sudo systemctl restart postgresql
+После выполнения этих шагов у вас будет развернут сервер баз данных PostgreSQL на AstraLinux с тремя базами данных, наполненными тестовыми данными, и несколькими пользователями с соответствующими правами доступа.
+
+
+
+
+1. Установка Docker
+Если Docker еще не установлен, выполните следующие команды:
+
+bash
+Copy code
+sudo apt update
+sudo apt install docker.io
+2. Запуск CloudBeaver в Docker
+Запустите контейнер CloudBeaver с помощью следующей команды:
+
+bash
+Copy code
+docker run -d --name clouddbeaver -p 80:8978 dbeaver/cloudbeaver:latest
+Эта команда запускает CloudBeaver и привязывает порт 8978 контейнера к порту 80 хоста.
+
+3. Настройка DNS или Hosts File
+Чтобы обеспечить доступ к CloudBeaver по адресу dbadm.company.prof, вам нужно настроить запись DNS на вашем сервере или локально в файле hosts.
+
+Для локального файла hosts:
+Отредактируйте файл /etc/hosts на локальной машине, добавив строку:
+
+php
+Copy code
+<IP-адрес сервера> dbadm.company.prof
+4. Настройка SSL
+Для настройки SSL вам нужно будет получить валидный SSL сертификат для вашего домена dbadm.company.prof. Это можно сделать через Let's Encrypt или другого поставщика SSL сертификатов. После получения сертификата, вам потребуется настроить обратный прокси-сервер, такой как nginx или Apache, для обработки SSL.
+
+Пример настройки с nginx:
+Установка nginx:
+
+bash
+Copy code
+sudo apt install nginx
+Настройка конфигурации nginx:
+
+Создайте файл конфигурации для вашего сайта:
+
+bash
+Copy code
+sudo nano /etc/nginx/sites-available/dbadm.company.prof
+Добавьте следующую конфигурацию:
+
+nginx
+Copy code
+server {
+    listen 443 ssl;
+    server_name dbadm.company.prof;
+
+    ssl_certificate /path/to/your/certificate.crt;
+    ssl_certificate_key /path/to/your/private.key;
+
+    location / {
+        proxy_pass http://localhost:8978;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+Замените /path/to/your/certificate.crt и /path/to/your/private.key на пути к вашим SSL файлам.
+
+Активация сайта:
+
+bash
+Copy code
+sudo ln -s /etc/nginx/sites-available/dbadm.company.prof /etc/nginx/sites-enabled/
+sudo systemctl restart nginx
+5. Настройка доступа к CloudBeaver
+Для настройки пользователя cbadmin с паролем P@ssw0rd и подключения к базе данных, выполните следующие шаги:
+
+Откройте веб-интерфейс CloudBeaver по адресу https://dbadm.company.prof.
+
+Создайте пользователя cbadmin с паролем P@ssw0rd через интерфейс администрирования CloudBeaver.
+
+Настройте подключение к базе данных с правами чтения и записи (RW) в интерфейсе CloudBeaver.
+
+После выполнения этих шагов, CloudBeaver будет доступен по адресу dbadm.company.prof с защитой SSL, и вы сможете использовать его для администрирования вашей базы данных PostgreSQL.
+
+
+Для настройки системы централизованного журналирования с использованием syslog-ng и веб-панели LogAnalyzer на AstraLinux, выполните следующие шаги:
+
+a. Настройка Syslog-ng
+i. Взаимосвязь с PostgreSQL
+Установите syslog-ng и PostgreSQL (если еще не установлены):
+
+bash
+Copy code
+sudo apt update
+sudo apt install syslog-ng postgresql
+Создайте базу данных и пользователя для syslog-ng:
+
+bash
+Copy code
+sudo -i -u postgres
+createuser sysloguser
+createdb syslogdb -O sysloguser
+psql -c "ALTER USER sysloguser WITH ENCRYPTED PASSWORD 'your_password';"
+Настройте syslog-ng для работы с PostgreSQL:
+
+Отредактируйте файл конфигурации syslog-ng (/etc/syslog-ng/syslog-ng.conf) и добавьте конфигурацию для отправки логов в базу данных PostgreSQL.
+
+ii. Прием сообщений по TCP и UDP
+Настройте syslog-ng для приема сообщений по протоколам TCP и UDP на порту 514:
+
+В файле /etc/syslog-ng/syslog-ng.conf настройте источники для TCP и UDP:
+
+conf
+Copy code
+source s_network {
+    network(ip(0.0.0.0) port(514) transport("tcp"));
+    network(ip(0.0.0.0) port(514) transport("udp"));
+};
+b. Установка и настройка LogAnalyzer
+i. Установка LogAnalyzer
+Монтируйте образ addons_final.iso и запустите установку LogAnalyzer.
+ii. Создание пользователя и базы данных для LogAnalyzer
+Создайте пользователя и базу данных logs:
+
+bash
+Copy code
+sudo -i -u postgres
+createuser logs
+createdb logs -O logs
+psql -c "ALTER USER logs WITH ENCRYPTED PASSWORD 'your_password';"
+iii. Доступ к веб-панели LogAnalyzer
+Настройте веб-сервер (например, Apache или Nginx) для обслуживания LogAnalyzer.
+Настройте DNS или файл hosts для разрешения logs.company.prof на IP-адрес вашего сервера.
+iv. Авторизация в LogAnalyzer
+Настройте пользователя admin с паролем P@ssw0rd в интерфейсе установки LogAnalyzer.
+v. Настройка HTTPS
+Получите SSL-сертификат (например, через Let's Encrypt) для logs.company.prof.
+Настройте веб-сервер для использования SSL-сертификата.
+c. Централизованный сбор журналов
+Настройте хосты (RTR-HQ, RTR-BR, SRV-HQ, SRV-BR) для отправки логов на ваш syslog-ng сервер. Это делается путем настройки их syslog-клиентов для отправки логов на IP-адрес сервера syslog-ng.
+
+На сервере syslog-ng, убедитесь, что он настроен на прием и обработку входящих логов от этих хостов.
+
+Эти шаги обеспечат настройку централизованной системы журналирования с использованием syslog-ng и LogAnalyzer на AstraLinux, с поддержкой безопасного подключения через HTTPS и возможностью централизованного сбора логов с различных хостов.
+
+
+
+
+
+
+
+
+
+
+
+
+
+Для настройки прокси-сервера на SRV-BR с указанными параметрами, я предложу использовать Squid, поскольку он является мощным и гибким решением для прокси-серверов. Вот шаги по настройке:
+
+a) Установка Squid
+Установите Squid:
+
+bash
+Copy code
+sudo apt update
+sudo apt install squid
+b) Конфигурация Squid
+Откройте файл конфигурации Squid:
+
+bash
+Copy code
+sudo nano /etc/squid/squid.conf
+Настройте ACL (списки контроля доступа) и правила доступа:
+
+squid
+Copy code
+acl group1 proxy_auth REQUIRED
+http_access allow group1
+
+acl monitoring dstdomain .monitoring.company.prof
+acl group2 proxy_auth REQUIRED
+http_access allow group2 monitoring
+
+acl group3 proxy_auth REQUIRED
+http_access deny group3
+
+acl no_auth proxy_auth REQUIRED
+http_access deny no_auth
+
+acl cli_hq src <IP-адрес CLI-HQ>
+acl blocked_domains dstdomain vk.com mail.yandex.ru worldskills.org
+http_access allow cli_hq !blocked_domains
+
+http_access deny all
+Замените <IP-адрес CLI-HQ> на фактический IP-адрес компьютера CLI-HQ.
+
+Настройте аутентификацию:
+
+Для простоты мы будем использовать базовую аутентификацию:
+
+squid
+Copy code
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
+auth_param basic realm Proxy
+auth_param basic credentialsttl 2 hours
+acl authenticated proxy_auth REQUIRED
+Создайте файл паролей:
+
+bash
+Copy code
+sudo touch /etc/squid/passwd
+sudo chmod 777 /etc/squid/passwd
+Добавьте пользователей:
+
+bash
+Copy code
+sudo htpasswd /etc/squid/passwd username
+Повторите для всех необходимых пользователей.
+
+Перезагрузите Squid для применения изменений:
+
+bash
+Copy code
+sudo systemctl restart squid
+c) Настройка клиентского компьютера
+На клиентском компьютере в правом офисе:
+
+Откройте настройки сети или браузера.
+
+Введите IP-адрес и порт вашего Squid сервера в настройках прокси.
+
+Пример: IP: 3128 (где 3128 — стандартный порт Squid).
+
+d) Учет аутентификации
+При попытке доступа к веб-ресурсам через настроенный прокси-сервер, браузер автоматически запросит учетные данные пользователя. Это происходит из-за настройки базовой аутентификации в Squid.
+
+Эти шаги обеспечат настройку прокси-сервера на SRV-BR согласно вашим требованиям, включая управление доступом для различных групп пользователей и ограничение доступа к определенным доменам.

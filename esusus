@@ -1,0 +1,401 @@
+vESR - перед настройкой саб интерфейсов установить ovs на sw с двух сторон
+-----------------------------------------------
+config t
+hostname RTR1
+domain name company.prof
+int g 1/0/0
+ip address 10.10.10.2/30
+ip firewall disable
+exit
+ip route 0.0.0.0/0 10.10.10.1
+int g 1/0/1.100
+ip firewall disable
+ip address 10.0.10.1/27
+exit
+int g 1/0/1.200
+ip firewall disable
+ip address 10.0.10.33/27
+exit
+int g 1/0/1.300
+ip firewall disable
+ip address 10.0.10.65/27
+exit
+ip dhcp-server
+ip dhcp-server pool vlan100
+network 10.0.10.0/27
+address-range 10.0.10.2-10.0.10.7
+default-router 10.0.10.1
+domain-name company.prof
+exit
+syslog host srv-hq
+remote-address 10.0.10.34
+transport udp
+severity debug
+port 514
+exit
+object-group network LOCAL
+ip prefix 10.0.10.0/27
+exit
+object-group network WAN
+ip address-range 10.10.10.2
+exit
+nat source
+pool WAN
+ip address-range 10.10.10.2
+ruleset MASQUERADE
+to interface g 1/0/1
+rule 1
+match source-address LOCAL
+action source-nat pool WAN
+enable
+exit
+object-group service ISAKMP
+ port-range 500
+ exit
+
+security ike proposal ike_prop1
+ dh-group 2
+ authentication algorithm md5
+ encryption algorithm aes128
+ exit
+
+security ike policy ike_pol1
+ pre-shared-key hexadecimal 123FFF
+ proposal ike_prop1
+ exit
+
+security ike gateway ike_gw1
+ ike-policy ike_pol1
+ mode route-based
+ bind-interface vti 1
+ version v2-only
+ exit
+
+security ipsec proposal ipsec_prop1
+ authentication algorithm md5
+ encryption algorithm aes128
+ exit
+
+security ipsec policy ipsec_pol1
+ proposal ipsec_prop1
+ exit
+
+security ipsec vpn ipsec1
+ ike establish-tunnel immediate
+ ike gateway ike_gw1
+ ike ipsec-policy ipsec_pol1
+ enable
+ exit
+exit
+----------------------------------
+RTR-1
+----------------------------------
+router ospf log-adjacency-changes
+router ospf 1
+ area 0.0.0.0
+  network 10.0.10.0/27
+  network 10.0.10.32/27
+  network 10.0.10.64/27
+  enable
+  exit
+ enable
+ exit
+tunnel vti 1
+ ip firewall disable
+ local address 10.10.10.2
+ remote address 10.10.20.2
+ ip address 10.5.5.1/30
+ ip ospf instance 1
+ ip ospf area 0.0.0.0
+ ip ospf
+ enable
+ exit
+end
+commit
+confirm
+save
+----------------------------------
+RTR-2
+----------------------------------
+router ospf log-adjacency-changes
+router ospf 1
+ area 0.0.0.0
+  network 10.0.20.0/27
+  network 10.0.20.32/27
+  network 10.0.20.64/27
+  enable
+  exit
+ enable
+ exit
+tunnel vti 1
+ ip firewall disable
+ local address 10.10.20.2
+ remote address 10.10.10.2
+ ip address 10.5.5.2/30
+ ip ospf instance 1
+ ip ospf area 0.0.0.0
+ ip ospf
+ enable
+ exit
+end
+commit
+confirm
+save
+_______________________________________________________________________
+SW
+_______________________________________________________________________
+systemctl enable --now openvswitch
+ovs-vsctl add-br br0
+ovs-vsctl add-port br0 eth0 tag=100
+ovs-vsctl add-port br0 vlan300 -- set interface vlan300 type=internal
+ovs-vsctl set port vlan300 tag=300
+vim /etc/network/interfaces
+	auto vlan300
+	iface vlan300 inet static
+	address 10.0.10.70/27
+	gateway 10.0.10.65
+//ALT
+cp /etc/net/ifaces/ens33 /etc/net/ifaces/vlan300 -r
+echo 10.0.20.70/27 >> vlan300/ipv4address
+echo default via 10.0.20.65 >> vlan300/ipv4route
+_________________________________________________________________________
+
+DNS
+_________________________________________________________________________
+
+1) vim /etc/bind/named.conf.options
+	forwarders { 77.88.8.8; };
+	dnssec-validation no;
+	listen-on { any; }
+2) vim /etc/bind/named.conf.default-zones - настроить зоны "company.prof" и "0.10.in-addr.arpa"
+3) Прямая зона:
+   srv-hq	A	10.0.10.34
+   sw-hq	A	10.0.10.70
+   cli-hq	A	10.0.10.2
+   cicd-hq	A	10.0.10.35
+   worker1-hq	A	10.0.10.39
+   worker2-hq	A	10.0.10.40
+   k8s-master-hq A	10.0.10.36
+   k8s-worker1-hq A	10.0.10.37
+   k8s-worker2-hq A	10.0.10.38
+   rtr-hq	A	10.0.10.1
+   dbms		CNAME	srv-hq.company.prof.
+   monitoring	CNAME	srv-hq.company.prof.
+   rtr-br	A	10.0.20.1
+   sw-br	A	10.0.20.70
+   srv-br	A	10.0.20.34
+   cli-br	A	10.0.20.2
+   pve1-br	A	10.0.20.101
+   pve2-br	A	10.0.20.102
+   Обратная зона:
+   34.10	PTR	srv-hq.company.prof.
+   70.10	PTR	sw-hq.company.prof.
+   2.10		PTR	cli-hq.company.prof.
+   35.10	PTR	cicd-hq.company.prof.
+   39.10	PTR	worker1-hq.company.prof.
+   40.10	PTR	worker2-hq.company.prof.
+   36.10	PTR	k8s-master-hq.company.prof.
+   37.10	PTR	k8s-worker1-hq.company.prof.
+   38.10	PTR	k8s-worker2-hq.company.prof.
+   1.10		PTR	rtr-hq.company.prof.
+   70.20	PTR	sw-br.company.prof.
+   34.20	PTR	srv-br.company.prof.
+   2.20		PTR	cli-br.company.prof.
+   101.20	PTR	pve1-br.company.prof.
+   102.20	PTR	pve2-br.company.prof.
+4) named-checkconf -z
+5) systemctl restart bind9 и через host проверяем
+6) в файле /etc/bind/named.conf прописать acl "left" { 10.0.10.0/24; } и "right" соответственно;
+7) Создаем view left и right:
+view "left/right" {
+match-clients { "left/right"; };
+zone "company.prof" {  --это для right
+	type master;
+	file "/etc/bind/company.prof.right";
+};
+};
+8) allow-transfer { 10.0.20.34; }; 
+9) на alt-е ставим /etc/bind/options.conf - listen-on { any; };
+10) vim /etc/bind/local.conf 
+ zone "company.prof" {
+	type slave;
+	file "/etc/bind/zones/company.prof";
+	masters { 10.0.10.34; };
+};
+Перезапускаем bind
+________________________________________________________________________________________________________
+
+Ansible
+________________________________________________________________________________________________________
+Скачать модуль vESR для ansible: гайд https://docs.eltex-co.ru/display/doc/esr_command
+
+/etc/ansible/ansible.cfg -> inventory = /etc/ansible/inventory host_key_checking = False
+Файл inventory:
+[all:vars]
+ansible_ssh_user=sshuser
+ansible_ssh_pass=P@ssw0rd
+anisble_python_interpreter=python3
+[servers]
+pve1-br
+pve2-br
+srv-hq
+srv-br
+worker1-hq
+worker2-hq
+k8s ...
+[clients]
+cli-hq
+cli-br
+[Networking]
+rtr-br ansible_host=10.0.20.1 ansible_user=admin ansible_connection=network_cli ansible_network_os=esr
+rtr-hq ansible_host=10.0.10.1 ansible_user=admin ansible_connection=network_cli ansible_network_os=esr
+sw-hq
+sw-br
+
+gathering.yml:
+
+---
+- hosts: sw-br,sw-hq,clients,servers
+  tasks:
+  - name: Gathering information
+    lineinfile:
+      path: "/etc/ansible/output.yml"
+      line: "{{ ansible_facts.fqdn }} - {{ ansible_facts.default_ipv4.address }}"
+      create: yes
+    delegate_to: localhost
+
+- hosts: rtr-hq,rtr-br
+  tasks:
+  - name: Gathering vESR information
+    esr_command:
+      commands: show running-config | i hostname
+    register: vesrHostname
+
+  - name: Write info to file
+    lineinfile:
+      path: "/etc/ansible/output.yml"
+      line: "{{ vesrHostname.stdout[0].split()[1] }} - {{ ansible_host }}"
+      create: yes
+    delegate_to: localhost
+
+_________________________________________________________________________________________________________
+FreeIPA
+_________________________________________________________________________________________________________
+
+apt install astra-freeipa-server
+astra-freeipa-server -e
+Пароль: P@ssw0rd
+cat /tmp/ipa.system.records.*db >> /etc/bind/company.prof
+reboot
+kinit admin
+klist
+ipa group-add group1
+ipa group-add group2
+ipa group-add group3
+
+vim /etc/users.sh
+for i in $(seq 30); do
+    ipa -n user-add user$i --first user --last $i --password P@ssw0rd
+    if [[ $i = [1-9] ]] || [[ $i = "10" ]]; then ipa -n group-add-member group1 --users=user$i; fi
+    if [[ $i = 1[1-9] ]] || [[ $i = "20" ]]; then ipa -n group-add-member group2 --users=user$i; fi
+    if [[ $i = 2[1-9] ]] || [[ $i = "30" ]]; then ipa -n group-add-member group3 --users=user$i; fi
+done
+chmod +x /etc/users.sh
+/etc/users.sh
+---------------------
+CLI-HQ:
+apt install astra-freeipa-client
+nameserver 10.0.10.34
+astra-freeipa-client 
+astra-freeipa-client -i
+------------------------
+SRV-HQ:
+apt install nfs-kernel-server
+mkdir /homes
+chmod 777 /homes
+echo /homes *(rw,sync,no_root_squash) >> /etc/exports
+systemctl restart nfs-kernel-server
+exportfs -ra
+
+echo "10.0.10.34:/homes /home nfs _netdev,defaults 0 0" >> /etc/fstab
+mount -av
+_________________________________________________________________________________________________________
+Сертификаты
+__________________________________________________________________________________________________________
+
+1) vim /etc/openssl/openssl.cnf
+
+dir = /etc/ca
+copy_extensions = copy
+policy = policy_anything
+
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer
+basicConstraints = CA:true
+
+2) vim /var/lib/ssl/misc/CA.pl
+
+$CATOP = "/etc/ca";
+
+openssl genrsa -out subca.key 4096
+
+3) openssl req -new -key subca.key -out subca.csr
+
+4) ipa certprofile-show caIPAserviceCert --out sub.cfg
+5) sub.cfg:
+policyset.serverCertSet.1.constraint.class_id=noConstraintImpl
+policyset.serverCertSet.1.constraint.name=No Constraint
+policyset.serverCertSet.1.default.class_id=userSubjectNameDefaultImpl
+policyset.serverCertSet.1.default.name=Subject Name Default
+
+keyUsageCrlSign=true
+keyUsageDataEncipherment=false
+keyUsageDecipherOnly=false
+keyUsageDigitalSignature=true
+keyUsageEncipherOnly=false
+keyUsageKeyAgreement=false
+keyUsageKeyCertSign=true
+keyUsageKeyEncipherment=false
+keyUsageNonRepudiation=true
+
+policyset.serverCertSet.15.constraint.class_id=basicConstraintsExtConstraintImpl
+policyset.serverCertSet.15.constraint.name=Basic Constraint Extension Constraint
+policyset.serverCertSet.15.constraint.params.basicConstraintsCritical=true
+policyset.serverCertSet.15.constraint.params.basicConstraintsIsCA=true
+policyset.serverCertSet.15.constraint.params.basicConstraintsMinPathLen=0
+policyset.serverCertSet.15.constraint.params.basicConstraintsMaxPathLen=0
+policyset.serverCertSet.15.default.class_id=basicConstraintsExtDefaultImpl
+policyset.serverCertSet.15.default.name=Basic Constraints Extension Default
+policyset.serverCertSet.15.default.params.basicConstraintsCritical=true
+policyset.serverCertSet.15.default.params.basicConstraintsIsCA=true
+policyset.serverCertSet.15.default.params.basicConstraintsPathLen=0
+
+policyset.serverCertSet.list=1,2,3,4,5,6,8,9,10,11,15
+6) ipa certprofile-import SubCA --desc "123" --file sub.cfg --store=1
+7) Создаем во Freeipa  http сервис subca и подписываем сертификат с использованием нашего профиля 
+После того, как сертификат был подписан, надо вернуть его на машину с подчиненным ca
+./CA.pl -newca
+cat newkey.pem > /demoCA/private/cakey.pem
+echo "02" > /demoCA/private/serial
+Открываем openssl.cnf и комментим
+
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer
+basicContraints=CA:true
+Раскоменчиваем
+
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+Добавляем
+
+subjectAltName=@altNames
+[ altNames ]
+DNS.1 = *.company.prof
+Генерим и подписываем
+
+./CA.pl -newreq-nodes
+./CA.pl -sign
+_______________________________________________________________________________________________________________

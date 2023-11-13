@@ -1,0 +1,380 @@
+hostnamectl set-hostname sw1.company.prof
+exec bash    #Применяем изменения без перезагрузки
+vim /etc/hosts
+127.0.1.1 sw1 sw1.company.prof
+
+auto ens18
+iface ens18 inet static
+	address 10.10.10.20/24
+	gateway 10.03.321.321
+
+BOOTPROTO=static
+ipv4address 10.01.23.12/25
+ipv4route default via 10.23.21.21
+
+`systemctl restart networking`
+
+useradd -m passwd
+далее проверить судо apt update apt install sudo
+
+echo "sshuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+usermod -aG wheel sshuser
+
+
+
+На серевеах
+apt update
+apt install openssh-server
+
+
+/etc/ssh/sshd_config
+/etc/openssh/sshd_config
+PasswordAuthentication no
+Port 2023
+User sshuser
+
+На клиенте
+/etc/ssh/ssh_config  
+Host <адрес srv1 или srv2>
+    Port 2023
+	User sshuser
+
+ssh-keygen
+ssh-copy-id sshuser@10.0.10.10
+
+
+ДИСКИ
+apt install lvm2
+
+
+`lsblk`
+
+fdisk /dev/vdb
+n
+enter
+enter
+enter
+t
+8e
+w
+
+pvcreate /dev/vdb1 /dev/vdc1
+vgcreate hitech_vg /dev/vdb1 /dev/vdc1
+lvcreate -l 100%FREE -m1 -n mirror hitech_vg
+
+lvdisplay 
+
+mkfs.xfs /dev/hitech_vg/mirror
+
+mkdir /opt/data
+vim /etc/fstab
+/dev/hitech_vg/mirror /opt/data xfs defaults 0 0
+Проверить можно через `mount -av`
+
+
+в альте sfdisk 
+,
+write
+
+pvcreate /dev/vdb1 /dev/vdc1
+vgcreate hitech_vg /dev/vdb1 /dev/vdc1
+lvcreate --type striped --stripes 2 -l 100%FREE -n encrypted hitech_vg
+lvcreate -i 2 -I 4 -l +100%FREE -n encrypted hitech_vg
+mkfs.xfs /dev/hitech_vg/encrypted 
+
+cryptsetup luksFormat --hash=sha512 --key-size=512 --cipher=aes-xts-plain64 --verify-passphrase /dev/hitech_vg/encrypted
+cryptsetup luksOpen /dev/hitech_vg/encrypted unencrypted
+
+dd if=/dev/random bs=32 count=1 of=/root/key
+cryptsetup luksAddKey /dev/sdb1 /root/key
+
+добавляем в `/etc/crypttab` запись вида
+unencrypted /dev/hitech_vg/encrypted /root/key
+
+Добавляем в `fstab` запись с расшифрованным разделом
+
+/dev/mapper/unencrypted /opt/data xfs defaults 0 0
+____________________________________
+
+БД
+
+apt install postgresql #Установится postgres11
+
+apt-get install postgresql11 postgresql11-server postgresql11-contrib
+
+sytemctl enable --now postgrsql 
+
+
+
+su - postgres
+psql
+```
+
+### Создаем базы
+
+```
+create database prod;
+create database test;
+create database dev;
+
+```
+create user produser with password 'P@ssw0rd';
+create user devuser with password 'P@ssw0rd';
+create user testuser with password 'P@ssw0rd';
+
+
+```
+alter database dev owner to devuser;
+alter database prod owner to produser;
+alter database test owner to testuser;
+
+
+create user dbadmin superuser;
+alter user dbadmin with password 'P@ssw0rd';
+```
+Заполнить только на астре
+```
+su - postgres
+pgbench -i dev
+pgbench -i test
+pgbench -i prod
+```
+
+ в /etc/postgresql/../main/pg_hba.conf
+# Так же добавляем в раздел с репликацией
+# replication privilege
+host    replication    all     <ip адрес второго сервера>    trust
+
+в конфигурации /etc/postgresql/../main/postgresql.conf и добавляем следующее
+wal_level = replica
+max_wal_senders = 8
+wal_keep_size = 32
+
+systemctl restart postgresql
+
+--на SRV-BR
+/etc/postgresql/../main/pg_hba.conf
+host    replication    all     <ip адрес первого сервера>    trust
+/etc/postgresql/../main/postgresql.conf
+listen_addresses = 'localhost, <ip адрес текущего сервера>
+systemctl stop postgresql
+cd /var/lib/postgresql/<version>
+rm -rf /main/*
+pg_basebackup -h <ip srv1> -U postgres -D ./ -R -P
+systemctl start postgresql
+sudo -u postgres psql
+postgres=# \l
+
+haproxy на srv-hq
+apt install -y haproxy
+
+/etc/haproxy/haproxy.cfg
+frontend pg_frontend
+        bind *:5431
+        mode tcp
+        default_backend pg_backend
+
+backend pg_backend
+        mode tcp
+        balance first
+        server srv1 <ip srv1>:5432 check
+        server srv2 <ip srv2>:5432 check backup
+        option redispatch
+systemctl restart haproxy
+
+CloudBeaver
+устанавливаем docker-compose и запускаем cloudbeaver
+
+version: '3'
+services:
+  cloudbeaver:
+    image: dbeaver/cloudbeaver
+    container_name: cloudbeaver
+    ports:
+      - "8978:8978"
+    restart: unless-stopped
+    volumes:
+      - "./logs:/opt/cloudbeaver/logs"
+      - "./workspace:/opt/cloudbeaver/workspace"
+
+устанавливаем и конфигурируем nginx
+server {
+  listen 443 ssl;
+  server_name db-adm.company.prof;
+  ssl_certificate     /root/newcert.pem;
+  ssl_certificate_key /root/newkey.pem;
+location / {
+    proxy_pass       http://localhost:8978;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Host $http_host;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+ }
+}
+
+____________
+ZABBIX
+
+
+sudo apt install zabbix-server-pgsql zabbix-frontend-php php-pgsql
+```
+
+Конфиг php
+
+vim /etc/php/7.3/apache2/php.ini
+[DAte]
+date.timezone = Europe/Moscow
+``\\
+/etc/apache2/apache2.conf
+AstraMode off
+
+Конфиг БД
+su - postgres
+psql
+CREATE DATABASE ZABBIX;
+CREATE USER zabbix WITH PASSWORD 'P@ssw0rd';
+GRANT ALL ON DATABASE zabbix to zabbix;
+
+
+Импорт
+zcat /usr/share/zabbix-server-pgsql/{schema,images,data}.sql.gz | psql -h localhost zabbix zabbix
+```
+
+Включаем конф 
+a2enconf zabbix-frontend-php
+systemctl restart apache2
+```
+
+ в браузерео `hhtp://10.0.10.10/zabbix`
+
+Next step
+Next step
+ снимаем Database TLS encryption password=P@ssw0rd
+Жмем Next step srv-hq.compnay.prof Next step
+Скачиваем конфигу и закидываем в `/etc/zabbix/zabbix.conf.php`
+scp -P 2023 zabbix.cdo sshuser@10.0.10.34:/home/sshuser
+
+Включаем zabbix-server
+systemctl enable --now zabbix-server
+
+пароль от бд в конфиге
+vim /etc/zabbix/zabbix_server.conf
+DBPassword=P@ssw0rd
+systemctl restart zabbix-server
+```
+
+креды `Admin/zabbix`
+И не забываем поставить агента на сервер
+
+```
+apt install zabbix-agent
+```
+## Подключаем хосты
+
+Ставим zabbix-agent, идем в конфигу, меняем `Server=127.0.0.1` на `Server=10.0.10.10`
+/ETC/ZABBIX/ZABBIX-AGENT.CONF
+RESTART
+После этого хост можно добавлять в zabbix
+
+В zabbox идем в `Configuration -> Hosts`
+
+hostname srv-be.compnay.prof
+templates Linux by zabbix agent
+groupd linux servers
+add agent
+id domian
+
+Linxu by Zabbix AGent
+Linux Servers
+
+ `Monitoring -> Dashboard -> All dashboards` и нажать `Create dashboard` в правом верхнем углу
+
+ПОМЕНЯТЬ ПАРОЛЬ И ЛОГИН
+
+файл /etc/apache2/sites-enabled/000-default.conf добавить следующее
+ServerMaster webmaster@lovalohost
+DocumentRoot /var/www/html
+RewriteEngine on
+RewriteRule ^/$ /zabbix/ [R=301,L]
+
+
+
+PROXY
+apt-get install -y squid squid-helpers squid-kerberos-ldap-helper
+/etc/squid/squid.conf
+# Порт, который будет слушаться и с какого адреса сервера
+http_port 0.0.0.0:3128
+# Указываем DNS-сервер, к которому будут идти обращения
+dns_nameservers 10.0.10.40
+# Настройка параметров аутентфикации, подсмотреть можно в squid.config.documented
+auth_param basic program /usr/lib/squid/basic_ldap_auth -d -b "dc=company,dc=prof" -D "uid=admin,cn=users,cn=compat,dc=company,dc=prof" -w P@ssw0rd -f uid=%s 10.0.10.40
+auth_param basic realm squid
+auth_param basic children 5
+external_acl_type ldapgroup %LOGIN /usr/lib/squid/ext_ldap_group_acl -b "dc=company,dc=prof" -D "uid=admin,cn=users,cn=compat,dc=company,dc=prof" -w P@ssw0rd -f (&(memberOf=cn=%g,cn=groups,cn=accounts,dc=company,dc=prof)(uid=%u)) 10.0.10.40
+# Термин REQUIRED означает, что любой уже аутентифицированный пользователь будет соответствовать ACL с именем auth
+# Всплывающее диалоговое окно входа в систему с запросом имени пользователя и пароля является особенностью вашего веб-браузера. Это происходит только тогда, когда у веб-браузера нет рабочих учетных данных, которые он мог бы передать Squid при запросе на вход в систему
+acl auth proxy_auth REQUIRED
+# ACL,в которых указываем по сути сопоставления в виде src и dst #
+acl ld_group1 external ldapgroup group1
+acl ld_group2 external ldapgroup group2
+acl ld_group3 external ldapgroup group3
+acl local_domain dstdomain .company.prof
+acl monitoring dstdomain .monitoring.company.prof
+acl black_list_cli1 dstdomain .vk.com .mail.yandex.ru .worldskills.org
+acl cli1_net src 10.0.10.134
+# Rules, тут пишем Allow и Deny правила для http access #
+# Работает по принципу, что пришло первым то и отработало
+# Rule 3 должно быть выше, чтобы не запрашивало авторизацию
+http_access deny cli1_net black_list_cli1
+http_access allow cli1_net all
+# Rule 1
+http_access allow auth ld_group1 local_domain
+# Rule 2
+http_access allow auth ld_group2 monitoring
+# Deny all
+http_access deny all
+# После настройки необходимо перечитать конфигурацию SQUID. Если перезапускать службу squid, то это займет длительное время
+# Гораздо проще воспользоваться специальной командой
+squid -k reconfigure
+# Если ошибок не будет, то конфиг перечитается
+
+
+
+http_port 0.0.0.0:3128
+dns_nameservers 10.0.10.40
+auth_param basic program /usr/lib/squid/basic_ldap_auth -d -b "dc=company,dc=prof" -D "uid=admin,cn=users,cn=compat,dc=company,dc=prof" -w P@ssw0rd -f uid=%s 10.0.10.40
+auth_param basic realm squid
+auth_param basic children 5
+external_acl_type ldapgroup %LOGIN /usr/lib/squid/ext_ldap_group_acl -b "dc=company,dc=prof" -D "uid=admin,cn=users,cn=compat,dc=company,dc=prof" -w P@ssw0rd -f (&(memberOf=cn=%g,cn=groups,cn=accounts,dc=company,dc=prof)(uid=%u)) 10.0.10.40
+acl auth proxy_auth REQUIRED
+acl ld_group1 external ldapgroup group1
+acl ld_group2 external ldapgroup group2
+acl ld_group3 external ldapgroup group3
+acl local_domain dstdomain .company.prof
+acl monitoring dstdomain .monitoring.company.prof
+acl black_list_cli1 dstdomain .vk.com .mail.yandex.ru .worldskills.org
+acl cli1_net src 10.0.10.134
+http_access deny cli1_net black_list_cli1
+http_access allow cli1_net all
+http_access allow auth ld_group1 local_domain
+http_access allow auth ld_group2 monitoring
+http_access deny all
+
+
+squid -k reconfigure
+# Если ошибок не будет, то конфиг перечитается
+
+
+NFS
+apt install nfs-kernel-server
+mkdir /homes
+chmod 777 /homes
+vim /etc/exports
+/homes *(rw,sync,no_root_squash)
+systemctl restart nfs-kernel-server
+Через exportfs -ra 
+vim /etc/fstab
+10.0.10.10:/homes /home nfs _netdev,defaults 0 0
+mount -av

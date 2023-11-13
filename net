@@ -1,1 +1,308 @@
 11
+1# Установка и настройка сервера баз данных23## Установка45### Астра67```8apt install postgresql #Установится postgres119```1011На этом установка завершена, СУБД приезжает уже настроенной и готовой к работе.1213### Альт1415```16apt-get install postgresql11 postgresql11-server postgresql11-contrib17/etc/init.d/postgresql initdb18vim /var/lib/pgsql/data/postgresql.conf19# Ищем строчку, которая начинается на listen, раскомментируем и прописываем *20listen_addresses = '*'21vim /var/lib/pgsql/data/pg_hba.conf22Ищем строчку host со 127.0.0.1 и меняем на 0.0.0.0/023host all all 0.0.0.0/0 trust24systemctl restart postgresql25```2627## Работа с базами2829На астре все действия происходят через3031```32su - postgres33psql34```3536На альте через3738```39psql -U postgres40```4142### Создаем базы4344```45create database prod;46create database test;47create database dev;48```4950![Alt text](image.png)5152### Создаем юзеров5354```55create user produser with password 'P@ssw0rd';56create user devuser with password 'P@ssw0rd';57create user testuser with password 'P@ssw0rd';58```5960![Alt text](image-1.png)6162### Даем юзерам права на базы6364```65alter database dev owner to devuser;66alter database prod owner to produser;67alter database test owner to testuser;68```6970![Alt text](image-2.png)7172### создаем суперюзера7374```75create user dbadmin superuser;76alter user dbadmin with password 'P@ssw0rd';77```7879## Заполняем базы8081Делается не из шелла postgresql, а из баша8283### Астра8485```86su - postgres87pgbench -i dev88pgbench -i test89pgbench -i prod90```9192![Alt text](image-3.png)9394На альте это делать не надо, туда будет идти р
+епликация9596## Настройка репликации9798TOD
+# Установка и настройка сервера баз данных
+## Установка
+### Астра
+```
+apt install postgresql #Установится postgres11
+```
+На этом установка завершена, СУБД приезжает уже настроенной и готовой к работе.
+### Альт
+```
+apt-get install postgresql11 postgresql11-server postgresql11-contrib
+/etc/init.d/postgresql initdb
+vim /var/lib/pgsql/data/postgresql.conf
+# Ищем строчку, которая начинается на listen, раскомментируем и прописываем *
+listen_addresses = '*'
+vim /var/lib/pgsql/data/pg_hba.conf
+Ищем строчку host со 127.0.0.1 и меняем на 0.0.0.0/0
+host all all 0.0.0.0/0 trust
+systemctl restart postgresql
+```
+## Работа с базами
+На астре все действия происходят через
+```
+su - postgres
+psql
+```
+На альте через
+```
+psql -U postgres
+```
+### Создаем базы
+```
+create database prod;
+create database test;
+create database dev;
+```
+![Alt text](image.png)
+### Создаем юзеров
+```
+create user produser with password 'P@ssw0rd';
+create user devuser with password 'P@ssw0rd';
+create user testuser with password 'P@ssw0rd';
+```
+![Alt text](image-1.png)
+### Даем юзерам права на базы
+```
+alter database dev owner to devuser;
+alter database prod owner to produser;
+alter database test owner to testuser;
+```
+![Alt text](image-2.png)
+### создаем суперюзера
+```
+create user dbadmin superuser;
+alter user dbadmin with password 'P@ssw0rd';
+```
+## Заполняем базы
+Делается не из шелла postgresql, а из баша
+### Астра
+```
+su - postgres
+pgbench -i dev
+pgbench -i test
+pgbench -i prod
+```
+![Alt text](image-3.png)
+На альте это делать не надо, туда будет идти репликация
+
+
+1# Настройка дисковой подсистемы23## Зеркалируемый LVM на SRV145Находим диски, из которых будем собирать LVM через `lsblk`67Названия дисков будут отличаться. Выглядеть диски должны как неиспользуемые.89![Alt text](image.png)1011Сначала диски надо подготовить 1213```14fdisk /dev/vdb15n16enter17enter18enter19t208e21w22```23![Alt text](image-1.png)2425Второй готовим по аналогии2627Далее собирем LVM2829```30pvcreate /dev/vdb1 /dev/vdc131vgcreate hitech_vg /dev/vdb1 /dev/vdc132lvcreate -l 100%FREE -m1 -n mirror hitech_vg33```34![Alt text](image-2.png)3536Проверить можно через `lvdisplay -v`3738![Alt text](image-3.png)3940Далее, нужно автоматически монтировать в `/opt/data`4142Делаем файловую систему4344```45mkfs.xfs /dev/hitech_vg/mirror46```4748![Alt text](image-4.png)4950Создаем каталог и добавляем запись в fstab5152```53mkdir /opt/data54vim /etc/fstab55/dev/hitech_vg/mirror /opt/data xfs defaults 0 056```5758Проверить можно через `mount -av`5960![Alt text](image-5.png)6162## Шифрованный на SRV26364Производим подготовку и сборку LVM точно также как на SRV16566Надо учесть, что в альте нет `fdisk`6768Вместо него юзаем `sfdisk`6970```71sfdisk /dev/vdb72,73write74```7576![Alt text](image-6.png)7778Только в командочке `lvcreate` не пишем ключ `-m1`7980```81lvcreate -l 100%FREE -n encrypted hitech_vg82```8384Теперь шифруем примерно вот так8586```87cryptsetup luksFormat --hash=sha512 --key-size=512 --cipher=aes-xts-plain64 --verify-passphrase /dev/hitech_vg/encrypted88```8990Пароль ставим не P@ssw0rd, что-нибудь посложнее91Главное не забыть9293![Alt text](image-7.png)9495Проверим, что оно зашифровалось через luksOpen9697```98cryptsetup luksOpen /dev/hitech_vg/encrypted unencrypted99```100101![Alt text](image-8.png)102103Том, который называется unencrypted уже можно монтировать104105Теперь надо сделать так, чтобы он нормально монтировался при загрузке без ввода пароля106107Для начала создаем ключик108109```110dd if=/dev/random bs=32 count=1 of=/root/key111cryptsetup luksAddKey /dev/sdb1 /root/key112```113114![Alt text](image-9.png)115116Потом добавляем в `/etc/crypttab` запись вида117118```119unencrypted /dev/hitech_vg/encrypted /root/key120```121122![Alt text](image-10.png)123124После этого надо ребутнуться и проверить, что диск расшифровывается при загрузке125126Смотрим `lsblk` -- если есть расшифрованный раздел, норм127128Не забываем добавить файлуху129130Добавляем в `fstab` запись с расшифрованным разделом131132```133/dev/mapper/unencrypted /opt/data xfs defaults 0 0134```
+
+# Настройка дисковой подсистемы
+## Зеркалируемый LVM на SRV1
+Находим диски, из которых будем собирать LVM через `lsblk`
+Названия дисков будут отличаться. Выглядеть диски должны как неиспользуемые.
+![Alt text](image.png)
+Сначала диски надо подготовить 
+```
+fdisk /dev/vdb
+n
+enter
+enter
+enter
+t
+8e
+w
+```
+![Alt text](image-1.png)
+Второй готовим по аналогии
+Далее собирем LVM
+```
+pvcreate /dev/vdb1 /dev/vdc1
+vgcreate hitech_vg /dev/vdb1 /dev/vdc1
+lvcreate -l 100%FREE -m1 -n mirror hitech_vg
+```
+![Alt text](image-2.png)
+Проверить можно через `lvdisplay -v`
+![Alt text](image-3.png)
+Далее, нужно автоматически монтировать в `/opt/data`
+Делаем файловую систему
+```
+mkfs.xfs /dev/hitech_vg/mirror
+```
+![Alt text](image-4.png)
+Создаем каталог и добавляем запись в fstab
+```
+mkdir /opt/data
+vim /etc/fstab
+/dev/hitech_vg/mirror /opt/data xfs defaults 0 0
+```
+Проверить можно через `mount -av`
+![Alt text](image-5.png)
+## Шифрованный на SRV2
+Производим подготовку и сборку LVM точно также как на SRV1
+Надо учесть, что в альте нет `fdisk`
+Вместо него юзаем `sfdisk`
+```
+sfdisk /dev/vdb
+,
+write
+```
+![Alt text](image-6.png)
+Только в командочке `lvcreate` не пишем ключ `-m1`
+```
+lvcreate -l 100%FREE -n encrypted hitech_vg
+```
+Теперь шифруем примерно вот так
+```
+cryptsetup luksFormat --hash=sha512 --key-size=512 --cipher=aes-xts-plain64 --verify-passphrase /dev/hitech_vg/encrypted
+```
+Пароль ставим не P@ssw0rd, что-нибудь посложнее
+Главное не забыть
+![Alt text](image-7.png)
+Проверим, что оно зашифровалось через luksOpen
+```
+cryptsetup luksOpen /dev/hitech_vg/encrypted unencrypted
+```
+![Alt text](image-8.png)
+Том, который называется unencrypted уже можно монтировать
+Теперь надо сделать так, чтобы он нормально монтировался при загрузке без ввода пароля
+Для начала создаем ключик
+```
+dd if=/dev/random bs=32 count=1 of=/root/key
+cryptsetup luksAddKey /dev/sdb1 /root/key
+```
+![Alt text](image-9.png)
+Потом добавляем в `/etc/crypttab` запись вида
+```
+unencrypted /dev/hitech_vg/encrypted /root/key
+```
+![Alt text](image-10.png)
+После этого надо ребутнуться и проверить, что диск расшифровывается при загрузке
+Смотрим `lsblk` -- если есть расшифрованный раздел, норм
+Не забываем добавить файлуху
+Добавляем в `fstab` запись с расшифрованным разделом
+```
+/dev/mapper/unencrypted /opt/data xfs defaults 0 0
+```
+
+
+1# Настройка системы централизованного журналирования23## Установка и настройка rsyslog45```6apt install rsyslog rsyslog-pgsql7```89при установке указываем пароль P@ssw0rd и сервер localhost1011База и подключение сконфигурируется автоматически1213![Alt text](image-1.png)1415```16vim /etc/rsyslog.conf17Раскомментим imtcp и imudp18```1920![Alt text](image.png)2122Перезапускаем rsyslog2324```25systemctl restart rsyslog26```2728Для удаленной отправки логов идем в `rsyslog.conf` на целевой машине и пишем2930```31*.* @10.0.10.1032```3334На элтексте смотри [eltex](../vesr/vesr.md#логи)3536## Установка loganalyzer3738Первым делом пропатчим таблицу, чтоб loganalyzer работал3940```41su - postgres42psql43\c Syslog44alter table systemevents add column processid int;45```4647Получаем архив с loganalyzer4849Ставим пакеты5051```52apt install apache2 php php-pgsql 53```5455Распаковываем loganalyzer5657```58rm -rf /var/www/html/*59tar xvf loganalyzer.tar.gz60mv loganalyzer/src/* /var/www/html/61touch /var/www/html/config.php62chmod 666 config.php63chown www-data:www-data /var/www/html/* -R64```6566Чуть правим конфигу апача6768```69vim /etc/apache2/apache2.conf70Ищем AstraMode и меняем на off71AstraMode off72```7374Заходим на сервер с логаналайзером7576![Alt text](image-2.png)7778Нажимаем на here7980![Alt text](image-3.png)8182Нажимаем на next8384![Alt text](image-4.png)8586И еще раз на next8788![Alt text](image-5.png)8990И еще раз на next9192![Alt text](image-7.png)9394Source type -> Database (PDO)9596Database Storage Engine -> Postgresql9798Database Name -> Syslog99100Database User -> postgres101102Database Password -> P@ssw0rd103104![Alt text](image-6.png)105106Ура победа, жмем finish107108![Alt text](image-8.png)
+
+# Настройка системы централизованного журналирования
+## Установка и настройка rsyslog
+```
+apt install rsyslog rsyslog-pgsql
+```
+при установке указываем пароль P@ssw0rd и сервер localhost
+База и подключение сконфигурируется автоматически
+![Alt text](image-1.png)
+```
+vim /etc/rsyslog.conf
+Раскомментим imtcp и imudp
+```
+![Alt text](image.png)
+Перезапускаем rsyslog
+```
+systemctl restart rsyslog
+```
+Для удаленной отправки логов идем в `rsyslog.conf` на целевой машине и пишем
+```
+*.* @10.0.10.10
+```
+На элтексте смотри [eltex](../vesr/vesr.md#логи)
+## Установка loganalyzer
+Первым делом пропатчим таблицу, чтоб loganalyzer работал
+```
+su - postgres
+psql
+\c Syslog
+alter table systemevents add column processid int;
+```
+Получаем архив с loganalyzer
+Ставим пакеты
+```
+apt install apache2 php php-pgsql 
+```
+Распаковываем loganalyzer
+```
+rm -rf /var/www/html/*
+tar xvf loganalyzer.tar.gz
+mv loganalyzer/src/* /var/www/html/
+touch /var/www/html/config.php
+chmod 666 config.php
+chown www-data:www-data /var/www/html/* -R
+```
+Чуть правим конфигу апача
+```
+vim /etc/apache2/apache2.conf
+Ищем AstraMode и меняем на off
+AstraMode off
+```
+Заходим на сервер с логаналайзером
+![Alt text](image-2.png)
+Нажимаем на here
+![Alt text](image-3.png)
+Нажимаем на next
+![Alt text](image-4.png)
+И еще раз на next
+![Alt text](image-5.png)
+И еще раз на next
+![Alt text](image-7.png)
+Source type -> Database (PDO)
+Database Storage Engine -> Postgresql
+Database Name -> Syslog
+Database User -> postgres
+Database Password -> P@ssw0rd
+![Alt text](image-6.png)
+Ура победа, жмем finish
+![Alt text](image-8.png)
+
+1# Настройка системы централизованного журналирования23## Установка и настройка rsyslog45```6apt install rsyslog rsyslog-pgsql7```89при установке указываем пароль P@ssw0rd и сервер localhost1011База и подключение сконфигурируется автоматически1213![Alt text](image-1.png)1415```16vim /etc/rsyslog.conf17Раскомментим imtcp и imudp18```1920![Alt text](image.png)2122Перезапускаем rsyslog2324```25systemctl restart rsyslog26```2728Для удаленной отправки логов идем в `rsyslog.conf` на целевой машине и пишем2930```31*.* @10.0.10.1032```3334На элтексте смотри [eltex](../vesr/vesr.md#логи)3536## Установка loganalyzer3738Первым делом пропатчим таблицу, чтоб loganalyzer работал3940```41su - postgres42psql43\c Syslog44alter table systemevents add column processid int;45```4647Получаем архив с loganalyzer4849Ставим пакеты5051```52apt install apache2 php php-pgsql 53```5455Распаковываем loganalyzer5657```58rm -rf /var/www/html/*59tar xvf loganalyzer.tar.gz60mv loganalyzer/src/* /var/www/html/61touch /var/www/html/config.php62chmod 666 config.php63chown www-data:www-data /var/www/html/* -R64```6566Чуть правим конфигу апача6768```69vim /etc/apache2/apache2.conf70Ищем AstraMode и меняем на off71AstraMode off72```7374Заходим на сервер с логаналайзером7576![Alt text](image-2.png)7778Нажимаем на here7980![Alt text](image-3.png)8182Нажимаем на next8384![Alt text](image-4.png)8586И еще раз на next8788![Alt text](image-5.png)8990И еще раз на next9192![Alt text](image-7.png)9394Source type -> Database (PDO)9596Database Storage Engine -> Postgresql9798Database Name -> Syslog99100Database User -> postgres101102Database Password -> P@ssw0rd103104![Alt text](image-6.png)105106Ура победа, жмем finish107108![Alt text](image-8.png)
+# Настройка системы централизованного журналирования
+## Установка и настройка rsyslog
+```
+apt install rsyslog rsyslog-pgsql
+```
+при установке указываем пароль P@ssw0rd и сервер localhost
+База и подключение сконфигурируется автоматически
+![Alt text](image-1.png)
+```
+vim /etc/rsyslog.conf
+Раскомментим imtcp и imudp
+```
+![Alt text](image.png)
+Перезапускаем rsyslog
+```
+systemctl restart rsyslog
+```
+Для удаленной отправки логов идем в `rsyslog.conf` на целевой машине и пишем
+```
+*.* @10.0.10.10
+```
+На элтексте смотри [eltex](../vesr/vesr.md#логи)
+## Установка loganalyzer
+Первым делом пропатчим таблицу, чтоб loganalyzer работал
+```
+su - postgres
+psql
+\c Syslog
+alter table systemevents add column processid int;
+```
+Получаем архив с loganalyzer
+Ставим пакеты
+```
+apt install apache2 php php-pgsql 
+```
+Распаковываем loganalyzer
+```
+rm -rf /var/www/html/*
+tar xvf loganalyzer.tar.gz
+mv loganalyzer/src/* /var/www/html/
+touch /var/www/html/config.php
+chmod 666 config.php
+chown www-data:www-data /var/www/html/* -R
+```
+Чуть правим конфигу апача
+```
+vim /etc/apache2/apache2.conf
+Ищем AstraMode и меняем на off
+AstraMode off
+```
+Заходим на сервер с логаналайзером
+![Alt text](image-2.png)
+Нажимаем на here
+![Alt text](image-3.png)
+Нажимаем на next
+![Alt text](image-4.png)
+И еще раз на next
+![Alt text](image-5.png)
+И еще раз на next
+![Alt text](image-7.png)
+Source type -> Database (PDO)
+Database Storage Engine -> Postgresql
+Database Name -> Syslog
+Database User -> postgres
+Database Password -> P@ssw0rd
+![Alt text](image-6.png)
+Ура победа, жмем finish
+![Alt text](image-8.png)
+
+
+
+
+
+

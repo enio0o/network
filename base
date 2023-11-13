@@ -170,3 +170,148 @@ ip addr add 10.0.20.203/27 dev vlan300
 ip route add default via 10.0.20.193
 ip link set up vlan300
 ```
+
+Идем в /etc/postgresql/../main/pg_hba.conf
+# Так же добавляем в раздел с репликацией
+# replication privilege
+host replication
+all <ip адрес
+L
+второго сервера>
+trust
+Далее идём в конфигурациюю /etc/postgresql/../main/postgresql.confи
+добавляем следующее
+Далее идём в конфигурациюю /etc/postgresql/../main/postgresql.confи
+добавляем следующее
+replica
+wal_level
+I
+max wal senders = 8
+wal_keep_size = 32
+E
+Перезапускаем postgresql
+
+Перезапускаем postgresql
+systemctl restart postgresql
+Идём на SRV-BR
+редактируем файл /etc/postgresql/../main/pg_hba.conf
+Добавляем следующие строки, тем самым мы разрешаем подключаться всем
+внешним пользователям к нашей базе данных
+
+
+
+Добавляем следующие строки, тем самым мы разрешаем подключаться всем
+внешним пользователям к нашей базе данных
+host
+replication
+al1
+<ір адрес первого сервераж
+trust
+Редактируем файл /etc/postgresql/./main/postgresql.conf
+приводим строку listen_address к такому виду
+
+Редактируем файл /etc/postgresql/./main/postgresql.conf
+приводим строку listen_address к такому виду
+listen_addresses = 'localhost, zip адрес текущего серверах
+L
+Останавливаем службу postgresq!
+E
+systemctl stop postgresql
+
+Переходим в каталог и удаляем содержимое каталога main
+cd /var/lib/postgresql/<version>
+rm -rf /main/*
+J
+Делаем бэкап баз с мастер-сервера
+E
+pg_basebackup -h <ip srv1> -U postgres -D ./-R -P
+CO
+Qanvvaoм noctnrocnl
+
+
+Делаем бэкап баз с мастер-сервера
+pg_basebackup -h <ip srv1> -U postgres -D ./ -R -P
+J
+Запускаем postgresql
+systemctl start postgresql
+Заходим в psql и смотрим, что есть всё, что было на первом сервере
+
+systemctl start postgresql
+Заходим в psqlи смотрим, что есть всё, что было на первом сервере
+sudo -u postgres psql
+postgres=# \l
+
+/etc/haproxy/haproxy.cfg
+
+frontend pg_frontend
+bind *:5431
+mode tcp
+default_backend pg_backend
+backend pg_backend
+mode tcp
+balance first
+server srv1 <ip srv1>:5432 check
+server srv2 <ip srv2>:5432 check backup
+option redispatch
+
+На любом сервере устанавливаем docker-compose и запускаем cloudbeaver
+
+Preview
+Code
+Blame
+Raw
+C
+version: '3'
+services:
+cloudbeaver:
+image: dbeaver/cloudbeaver
+container_name: cloudbeaver
+ports:
+"8978:8978"
+restart: unless-stopped
+volumes:
+"./logs:/opt/cloudbeaver/logs"
+/workspace:/opt/cloudbeaver/workspace"
+
+
+На том же сервере устанавливаем и конфигурируем nginx
+server f
+listen 443 ssl;
+server_name db-adm.company.prof;
+ssl certificate
+/root/newcert.pem;
+ssl_certificate_key /root/newkey.pem;
+location
+http://localhost:8978
+proxy_pass
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header Host $http_host;
+
+Preview
+Code
+Blame
+Raw
+D
+SLC EWC L.E川
+ssl certificate_key /root/newkey.pem;
+location /f
+http://localhost:8978;
+proxy_pass
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header Host $http_host;
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade,
+proxy_set_header Connection "upgrade";
+
+configure
+syslog host SRV1
+remote-address 10.0.10.10
+transport udp
+severity debug
+port 514
+end
+commit
+confirm
+save

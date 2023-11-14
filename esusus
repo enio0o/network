@@ -399,3 +399,97 @@ DNS.1 = *.company.prof
 ./CA.pl -newreq-nodes
 ./CA.pl -sign
 _______________________________________________________________________________________________________________
+1. Установите пакеты для работы с сертификатами на сервере astra Linux:
+apt-get install -y openssl libssl-dev
+
+
+2. Создайте каталог для хранения файлов подчиненного ЦС:
+mkdir /etc/SubCA
+
+
+3. Сгенерируйте приватный ключ для подчиненного ЦС:
+openssl genrsa -out /etc/SubCA/subca.key 4096
+
+
+4. Создайте запрос на сертификат для подчиненного ЦС:
+openssl req -new -key /etc/SubCA/subca.key -out /etc/SubCA/subca.csr -subj "/C=RU/ST=Moscow/L=Moscow/O=SubCA/CN=SubCA"
+
+
+5. Подпишите сертификат подчиненного ЦС при помощи ЦС на FreeIPA. Для этого необходимо выполнить следующие действия:
+- Зайдите на сервер FreeIPA и перейдите в раздел "Certificate Management" -> "Certificate Authorities".
+- Нажмите на кнопку "Add CA".
+- В поле "CA Subject" укажите данные для подчиненного ЦС: C=RU, ST=Moscow, L=Moscow, O=SubCA, CN=SubCA.
+- В поле "CA Certificate Request" вставьте содержимое файла /etc/SubCA/subca.csr.
+- Нажмите на кнопку "Add".
+- Скачайте полученный сертификат подчиненного ЦС и сохраните его в файл /etc/SubCA/subca.crt.
+
+6. Настройте подчиненный ЦС на сервере astra Linux. Для этого необходимо создать файл /etc/SubCA/subca.conf со следующим содержимым:
+[ ca ]
+default_ca = subca
+
+[ subca ]
+dir = /etc/SubCA
+database = $dir/index.txt
+serial = $dir/serial
+new_certs_dir = $dir/certs
+certificate = $dir/subca.crt
+private_key = $dir/subca.key
+default_days = 365
+default_md = sha256
+policy = subca_policy
+copy_extensions = copyall
+
+[ subca_policy ]
+countryName = optional
+stateOrProvinceName = optional
+localityName = optional
+organizationName = optional
+commonName = supplied
+emailAddress = optional
+
+[ req ]
+default_bits = 4096
+default_md = sha256
+prompt = no
+distinguished_name = dn
+
+[ dn ]
+C=RU
+ST=Moscow
+L=Moscow
+O=SubCA
+CN=SubCA
+
+
+7. Создайте каталог для хранения индексного файла и серийного номера:
+mkdir /etc/SubCA/{certs,crl}
+touch /etc/SubCA/index.txt
+echo 01 > /etc/SubCA/serial
+
+
+8. Подпишите сертификат подчиненного ЦС при помощи созданного конфигурационного файла:
+openssl ca -batch -config /etc/SubCA/subca.conf -in /etc/SubCA/subca.csr -out /etc/SubCA/subca.crt -extensions v3_ca -notext
+
+
+9. Настройте доверие к сертификату со стороны обоих клиентов (astra Linux). Для этого необходимо выполнить следующие действия:
+- Скопируйте файл /etc/SubCA/subca.crt на клиенты в каталог /etc/pki/ca-trust/source/anchors/.
+- Обновите хранилище сертификатов на клиентах:
+update-ca-trust
+
+
+10. Для того чтобы все сертификаты, необходимые для каких-либо сервисов, были изданы при помощи подчиненного ЦС, необходимо настроить параметр "certificate authority" в конфигурационных файлах сервисов на сервере astra Linux. Для этого необходимо выполнить следующие действия:
+- Откройте конфигурационный файл сервиса на сервере astra Linux.
+- Найдите параметр "certificate authority" и укажите в нем путь к файлу /etc/SubCA/subca.crt.
+
+11. Для обеспечения доверия к сертификатам в браузере Firefox, необходимо выполнить следующие действия:
+- Откройте браузер Firefox и в адресной строке введите "about:config".
+- Найдите параметр "security.enterprise_roots.enabled" и установите его значение в "true".
+- Скопируйте файл /etc/SubCA/subca.crt на компьютер, с которого будет производиться доступ к сервисам на сервере astra Linux.
+- Откройте браузер Firefox и в адресной строке введите "about:preferences#privacy".
+- Прокрутите страницу до раздела "Certificates" и нажмите на кнопку "View Certificates".
+- В открывшемся окне выберите вкладку "Authorities" и нажмите на кнопку "Import".
+- Укажите путь к файлу /etc/SubCA/subca.crt и нажмите на кнопку "Open".
+- В появившемся окне установите галочку напротив опции "Trust this CA to identify websites" и нажмите на кнопку "OK".
+- Повторите этот же процесс для браузера Firefox на других компьютерах, с которых будет производиться доступ к сервисам на сервере astra Linux.
+
+Теперь доверие к сертификатам подчиненного ЦС будет обеспечено со стороны клиента astra Linux, а также в браузере Firefox на любом компьютере.

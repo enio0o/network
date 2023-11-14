@@ -21,20 +21,16 @@ policy
 
 Приведите данные строчки к такому виду:
 
-dir
-![Alt text](image.png)
+dir=/etc/ca
 
-copy_extensions
+copy_extensions=copy
 
-![Alt text](image-1.png)
-
-policy
-![Alt text](image-2.png)
+policy=policy_anything
 
 Идем править конфиг по пути **/usr/lib/ssl/misc/CA.pl**
 
 Приведите строку CATOP к данному виду:
-![Alt text](image-3.png)
+CATOP=/etc/ca
 
 Теперь можно произвести настройку центра сертификации
 
@@ -47,7 +43,7 @@ CA.pl -newca
 ```
 
 Скипаем все, кроме Common Name и PEM phase phrase
-![Alt text](image-4.png)
+
 
 Теперь сгенерируем сами сертификаты
 
@@ -170,15 +166,14 @@ docker exec -it gitlab grep 'Password:' /etc/gitlab/initial_root_password
 
 Идем и создаем access token
 
-![Alt text](image-5.png)
+administrator-hitqaap-accestokens
 
 Нажимаем add token
 
-![Alt text](image-6.png)
 
 Заполняем как на картинке и  нажимаем create token
 
-![Alt text](image-7.png)
+owner все галки tokem
 
 Сохраняем куда-нибудь токен
 

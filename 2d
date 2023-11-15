@@ -685,3 +685,301 @@ readinessProbe:
   periodSeconds: 5
 Адаптируйте пути (/healthz, /readiness), порты и другие параметры в соответствии с вашим приложением.
 Убедитесь, что ваши конфигурации соответствуют требованиям вашего приложения и следуют лучшим практикам Kubernetes. Также рекомендуется регулярно обновлять и поддерживать ваши Helm чарты и Kubernetes конфигурации для обеспечения безопасности и надежности вашего кластера.
+
+
+Включение аддонов Prometheus и Grafana в MicroK8s:
+
+Откройте терминал и выполните следующие команды:
+bash
+Copy code
+microk8s enable prometheus
+microk8s enable grafana
+Эти команды установят и настроят Prometheus и Grafana в вашем кластере MicroK8s.
+Проверка статуса:
+
+Проверьте статус установленных служб:
+bash
+Copy code
+microk8s status
+Убедитесь, что Prometheus и Grafana запущены и работают корректно.
+Шаг 2: Настройка доступа к Grafana
+Настройка Ingress для Grafana:
+
+Для настройки доступа к Grafana по URL https://grafana.company.prof вам необходимо создать Ingress-ресурс.
+Вам потребуется записать YAML-файл для Ingress, который перенаправит запросы на Grafana. Пример конфигурации Ingress:
+yaml
+Copy code
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: grafana.company.prof
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+Настройка SSL:
+
+Если у вас есть SSL-сертификат для вашего домена, вы должны указать его в настройках Ingress.
+Если используете Let's Encrypt, можете воспользоваться cert-manager для автоматической установки сертификатов.
+Шаг 3: Создание Дашбордов в Grafana
+Доступ к Grafana:
+
+После настройки Ingress, откройте https://grafana.company.prof в браузере.
+Используйте учетные данные по умолчанию (обычно admin/admin) и измените пароль на P@ssw0rd.
+Создание дашборда Pods:
+
+В Grafana, создайте новый дашборд и добавьте на него панель (Panel).
+В качестве источника данных выберите Prometheus.
+Настройте запросы Prometheus для получения данных о CPU и ОЗУ всех подов. Пример запроса для CPU: sum(rate(container_cpu_usage_seconds_total{namespace="default"}[5m])) by (pod).
+Повторите аналогичные шаги для ОЗУ.
+Создание дашборда Cluster:
+
+Создайте еще один дашборд для общего мониторинга кластера.
+Добавьте панели для отображения общей нагрузки CPU и ОЗУ кластера. Используйте запросы агрегации в Prometheus.
+Шаг 4: Сохранение и использование дашбордов
+После настройки панелей не забудьте сохранить дашборды и регулярно их просматривать для мониторинга состояния кластера.
+Дополнительные замечания:
+Процесс настройки Ingress и SSL может отличаться в зависимости от вашей среды и конкретного Ingress Controller.
+Для создания более сложных запросов в Prometheus и настройки панелей Grafana может потребов
+
+Войдите в GitLab: Откройте GitLab и войдите в свою учетную запись.
+
+Создание нового проекта:
+
+Нажмите на кнопку "New project" или "Create a project".
+Выберите "Blank project".
+В поле "Project name" введите hitech2023-app.
+(Необязательно) Добавьте описание проекта.
+Выберите уровень видимости проекта (например, Private).
+Нажмите на кнопку "Create project".
+Шаг 2: Загрузка исходного кода приложения
+Клонирование репозитория локально:
+
+Используйте команду git clone, чтобы клонировать пустой репозиторий на свой компьютер.
+bash
+Copy code
+git clone <url-репозитория>
+Добавление исходного кода:
+
+Переместите исходный код вашего приложения в клонированный репозиторий.
+Фиксация изменений в репозитории:
+
+Используйте команды git add, git commit, и git push, чтобы добавить и отправить исходный код в репозиторий GitLab.
+bash
+Copy code
+git add .
+git commit -m "Initial commit with application source code"
+git push -u origin master
+Шаг 3: Создание директории для манифестов Kubernetes
+Создание директории Kubernetes:
+
+В вашем локальном репозитории создайте директорию kubernetes.
+bash
+Copy code
+mkdir kubernetes
+Добавление манифестов Kubernetes:
+
+Разместите все манифесты Kubernetes, которые вы хотите использовать, в этой директории.
+Фиксация и отправка манифестов:
+
+Используйте git add, git commit, и git push, чтобы добавить манифесты Kubernetes в репозиторий.
+bash
+Copy code
+git add kubernetes/
+git commit -m "Add Kubernetes manifests"
+git push
+Шаг 4: Настройка ArgoCD для синхронизации
+Настройка ArgoCD:
+
+Настройте ArgoCD для отслеживания изменений в директории kubernetes вашего репозитория.
+Создайте приложение в ArgoCD, указав путь к директории kubernetes в настройках источника.
+Синхронизация:
+
+После настройки ArgoCD будет автоматически синхронизировать изменения в директории kubernetes с вашим кластером Kubernetes.
+Эти инструкции предоставят вам основу для создания репозитория в GitLab, добавления исходного кода приложения, организации манифестов Kubernetes и их синхронизации с кластером Kubernetes через ArgoCD. Убедитесь, что у вас есть все необходимые доступы и права на выполнение этих операций в вашей среде.
+
+Для настройки CI/CD в GitLab, которая соответствует вашим требованиям, вам нужно создать файл .gitlab-ci.yml в корне вашего репозитория. Этот файл будет определять различные этапы и задачи в вашем CI/CD процессе. Ниже приведен пример конфигурации, которая удовлетворяет указанным требованиям:
+
+Файл .gitlab-ci.yml
+yaml
+Copy code
+stages:
+  - lint
+  - build
+  - deploy
+
+variables:
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_DRIVER: overlay2
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+
+before_script:
+  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+
+lint-backend:
+  stage: lint
+  script:
+    - pip install pylint
+    - pylint app-backend/*
+  only:
+    changes:
+      - app-backend/**/*
+
+build-backend:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t $IMAGE_TAG-backend app-backend/.
+  only:
+    changes:
+      - app-backend/**/*
+  tags:
+    - docker
+
+build-frontend:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t $IMAGE_TAG-frontend app-frontend/.
+  only:
+    changes:
+      - app-frontend/**/*
+  tags:
+    - docker
+
+deploy:
+  stage: deploy
+  script:
+    - docker push $IMAGE_TAG-backend
+    - docker push $IMAGE_TAG-frontend
+  only:
+    - master
+Объяснение:
+Стадии: Определены три стадии: lint, build, и deploy.
+Переменные: DOCKER_HOST и DOCKER_DRIVER нужны для работы с Docker. IMAGE_TAG создает метку для образов Docker.
+Linting бэкенда: Задача lint-backend запускается на стадии lint и проверяет синтаксис кода в директории app-backend с помощью pylint.
+Сборка бэкенда: Задача build-backend собирает Docker образ для бэкенда, если были изменения в app-backend.
+Сборка фронтенда: Аналогично, build-frontend собирает Docker образ для фронтенда, если были изменения в app-frontend.
+Отправка контейнеров: На стадии deploy, образы отправляются в GitLab Container Registry. Эта стадия срабатывает только при изменениях в ветке master.
+Важные Замечания:
+Docker и Docker-in-Docker: Эта конфигурация использует Docker-in-Docker (docker:dind), что требует соответствующей настройки GitLab Runner.
+
+Безопасность: Убедитесь, что ваш GitLab Runner безопасно настроен, особенно при использовании Docker-in-Docker.
+
+pylint: В примере предполагается, что pylint может проверить весь код в директории app-backend. Вам может потребоваться настроить pylint для вашего проекта.
+
+Изменения только в определенных директориях: С помощью ключа only: changes: задачи будут запускаться только при изменениях в указанных директориях.
+
+Настройка Dockerfile: Убедитесь, что у вас есть соответствующие Dockerfile в директориях app-backend и app-frontend для сборки образов.
+
+Эта конфигурация является базовой и может потребовать дополнительной настройки в зависимости от специфики вашего проекта и среды.
+
+Создание Ansible-роли для настройки АРМ пользователей подразумевает несколько ключевых шагов. Я подробно опишу, как создать роль client-deploy-role, которая устанавливает указанное ПО, конфигурирует доступ к sudo и управляет ярлыками на рабочем столе.
+
+Шаг 1: Создание структуры роли
+Создайте каталог роли:
+
+bash
+Copy code
+mkdir -p /etc/ansible/roles/client-deploy-role/{tasks,handlers,templates,files}
+Структура роли:
+
+tasks: Основные задачи роли.
+handlers: Обработчики, которые используются для перезапуска служб и других подобных операций.
+templates: Шаблоны для файлов конфигурации.
+files: Статические файлы, такие как ярлыки для рабочего стола.
+Шаг 2: Определение задач
+Файл задач (tasks/main.yml):
+Создайте файл /etc/ansible/roles/client-deploy-role/tasks/main.yml со следующим содержанием:
+
+yaml
+Copy code
+---
+- name: Установка Firefox
+  package:
+    name: firefox
+    state: present
+
+- name: Установка Zabbix-agent
+  package:
+    name: zabbix-agent
+    state: present
+
+- name: Установка Midnight-commander
+  package:
+    name: mc
+    state: present
+
+- name: Настройка доступа к sudo для группы group1
+  lineinfile:
+    path: /etc/sudoers
+    state: present
+    regexp: '^%group1'
+    line: '%group1 ALL=(ALL:ALL) ALL'
+    validate: 'visudo -cf %s'
+
+- name: Настройка ярлыков на рабочем столе
+  copy:
+    src: firefox.desktop
+    dest: /home/{{ item }}/Desktop/
+    mode: '0644'
+  loop: "{{ ansible_users }}"
+  when: ansible_users is defined
+
+- name: Удаление всех других ярлыков с рабочего стола
+  find:
+    paths: "/home/{{ item }}/Desktop/"
+    patterns: '*.desktop'
+    excludes: 'firefox.desktop'
+  loop: "{{ ansible_users }}"
+  register: desktop_files
+
+- name: Удаление лишних ярлыков
+  file:
+    path: "{{ item[1].path }}"
+    state: absent
+  loop: "{{ desktop_files.results }}"
+  when: desktop_files is defined and desktop_files.results | length > 0
+
+Шаг 3: Создание файлов ярлыков
+Добавьте ярлык Firefox в каталог files:
+Создайте файл firefox.desktop в каталоге /etc/ansible/roles/client-deploy-role/files.
+Добавьте в этот файл стандартное содержимое файла .desktop для Firefox.
+Шаг 4: Создание плейбука
+Создание плейбука (/etc/ansible/client_install.yml):
+
+yaml
+Copy code
+---
+- hosts: all
+  become: yes
+  roles:
+    - client-deploy-role
+Этот плейбук будет применять роль client-deploy-role к указанным хостам.
+
+Шаг 5: Запуск плейбука
+Выполните плейбук командой:
+
+bash
+Copy code
+ansible-playbook /etc/ansible/client_install.yml
+Важные замечания:
+В примере предполагается, что у вас есть список пользователей (ansible_users), для которых нужно настроить ярлыки. Этот список может быть определен в вашем инвентаре Ansible
+
+
+
+
